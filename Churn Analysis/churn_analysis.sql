@@ -110,7 +110,7 @@ WITH customer_metrics AS (
     LEFT JOIN subscriptions s ON c.customer_id = s.customer_id
     GROUP BY c.customer_id, c.signup_date, c.country
 ),
-clv_calculation AS (
+retention_calc AS (
     SELECT 
         customer_id,
         country,
@@ -120,12 +120,24 @@ clv_calculation AS (
         days_since_last_activity,
         CASE 
             WHEN active_months = 0 THEN 0
-            ELSE ROUND((active_months / total_months_active) * 100, 2)
+            ELSE ROUND((active_months / NULLIF(total_months_active, 0)) * 100, 2)
         END as retention_rate,
         CASE 
             WHEN total_months_active = 0 THEN 0
             ELSE active_months * 29.99 -- Assuming $29.99 monthly subscription
-        END as estimated_clv,
+        END as estimated_clv
+    FROM customer_metrics
+),
+clv_calculation AS (
+    SELECT 
+        customer_id,
+        country,
+        total_months_active,
+        active_months,
+        cancelled_months,
+        days_since_last_activity,
+        retention_rate,
+        estimated_clv,
         CASE 
             WHEN days_since_last_activity > 90 THEN 'High Risk'
             WHEN days_since_last_activity > 30 THEN 'Medium Risk'
@@ -133,7 +145,7 @@ clv_calculation AS (
             WHEN retention_rate < 50 THEN 'Medium Risk'
             ELSE 'Low Risk'
         END as churn_risk_level
-    FROM customer_metrics
+    FROM retention_calc
 )
 SELECT 
     churn_risk_level,
@@ -291,3 +303,5 @@ SELECT
 FROM customer_segments
 GROUP BY retention_strategy, recommended_action
 ORDER BY avg_risk_score DESC;
+
+SELECT * FROM retention_segments;

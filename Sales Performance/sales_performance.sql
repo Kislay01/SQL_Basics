@@ -67,7 +67,7 @@ SELECT
     ROUND((SUM(o.amount) / (SELECT SUM(amount) FROM orders)) * 100, 2) as revenue_share_pct
 FROM products p
 LEFT JOIN orders o ON p.product_id = o.product_id
-GROPRo.product_id, p.category;
+GROUP BY o.product_id, p.category;
 
 -- 8. Monthly Sales Trends with Growth Analysis
 WITH monthly_sales AS (
@@ -122,16 +122,15 @@ WITH customer_metrics AS (
 ),
 quartiles AS (
     SELECT 
-        PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY frequency) as freq_q1,
-        PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY frequency) as freq_q2,
-        PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY frequency) as freq_q3,
-        PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY monetary_value) as mon_q1,
-        PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY monetary_value) as mon_q2,
-        PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY monetary_value) as mon_q3,
-        PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY recency_days) as rec_q1,
-        PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY recency_days) as rec_q2,
-        PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY recency_days) as rec_q3
-    FROM customer_metrics
+        (SELECT frequency FROM (SELECT frequency, ROW_NUMBER() OVER (ORDER BY frequency) as rn, COUNT(*) OVER() as cnt FROM customer_metrics) t WHERE rn = FLOOR(cnt * 0.25)) as freq_q1,
+        (SELECT frequency FROM (SELECT frequency, ROW_NUMBER() OVER (ORDER BY frequency) as rn, COUNT(*) OVER() as cnt FROM customer_metrics) t WHERE rn = FLOOR(cnt * 0.50)) as freq_q2,
+        (SELECT frequency FROM (SELECT frequency, ROW_NUMBER() OVER (ORDER BY frequency) as rn, COUNT(*) OVER() as cnt FROM customer_metrics) t WHERE rn = FLOOR(cnt * 0.75)) as freq_q3,
+        (SELECT monetary_value FROM (SELECT monetary_value, ROW_NUMBER() OVER (ORDER BY monetary_value) as rn, COUNT(*) OVER() as cnt FROM customer_metrics) t WHERE rn = FLOOR(cnt * 0.25)) as mon_q1,
+        (SELECT monetary_value FROM (SELECT monetary_value, ROW_NUMBER() OVER (ORDER BY monetary_value) as rn, COUNT(*) OVER() as cnt FROM customer_metrics) t WHERE rn = FLOOR(cnt * 0.50)) as mon_q2,
+        (SELECT monetary_value FROM (SELECT monetary_value, ROW_NUMBER() OVER (ORDER BY monetary_value) as rn, COUNT(*) OVER() as cnt FROM customer_metrics) t WHERE rn = FLOOR(cnt * 0.75)) as mon_q3,
+        (SELECT recency_days FROM (SELECT recency_days, ROW_NUMBER() OVER (ORDER BY recency_days) as rn, COUNT(*) OVER() as cnt FROM customer_metrics) t WHERE rn = FLOOR(cnt * 0.25)) as rec_q1,
+        (SELECT recency_days FROM (SELECT recency_days, ROW_NUMBER() OVER (ORDER BY recency_days) as rn, COUNT(*) OVER() as cnt FROM customer_metrics) t WHERE rn = FLOOR(cnt * 0.50)) as rec_q2,
+        (SELECT recency_days FROM (SELECT recency_days, ROW_NUMBER() OVER (ORDER BY recency_days) as rn, COUNT(*) OVER() as cnt FROM customer_metrics) t WHERE rn = FLOOR(cnt * 0.75)) as rec_q3
 )
 SELECT 
     cm.customer_proxy,

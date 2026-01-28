@@ -300,7 +300,7 @@ pattern_analysis AS (
 SELECT 
     user_id,
     COUNT(*) as suspicious_transactions,
-    STRING_AGG(DISTINCT pattern_type, ', ') as detected_patterns,
+    GROUP_CONCAT(DISTINCT pattern_type SEPARATOR ', ') as detected_patterns,
     MIN(txn_time) as first_suspicious_time,
     MAX(txn_time) as last_suspicious_time,
     SUM(amount) as total_suspicious_amount,
@@ -320,26 +320,10 @@ WITH real_time_metrics AS (
         t.amount,
         t.txn_time,
         u.region,
-        COUNT(*) OVER (
-            PARTITION BY t.user_id 
-            ORDER BY t.txn_time 
-            RANGE BETWEEN INTERVAL 1 HOUR PRECEDING AND CURRENT ROW
-        ) as transactions_last_hour,
-        SUM(t.amount) OVER (
-            PARTITION BY t.user_id 
-            ORDER BY t.txn_time 
-            RANGE BETWEEN INTERVAL 1 HOUR PRECEDING AND CURRENT ROW
-        ) as amount_last_hour,
-        COUNT(*) OVER (
-            PARTITION BY t.user_id 
-            ORDER BY t.txn_time 
-            RANGE BETWEEN INTERVAL 1 DAY PRECEDING AND CURRENT ROW
-        ) as transactions_last_day,
-        SUM(t.amount) OVER (
-            PARTITION BY t.user_id 
-            ORDER BY t.txn_time 
-            RANGE BETWEEN INTERVAL 1 DAY PRECEDING AND CURRENT ROW
-        ) as amount_last_day,
+        (SELECT COUNT(*) FROM transactions t2 WHERE t2.user_id = t.user_id AND t2.txn_time BETWEEN DATE_SUB(t.txn_time, INTERVAL 1 HOUR) AND t.txn_time) as transactions_last_hour,
+        (SELECT COALESCE(SUM(amount), 0) FROM transactions t2 WHERE t2.user_id = t.user_id AND t2.txn_time BETWEEN DATE_SUB(t.txn_time, INTERVAL 1 HOUR) AND t.txn_time) as amount_last_hour,
+        (SELECT COUNT(*) FROM transactions t2 WHERE t2.user_id = t.user_id AND t2.txn_time BETWEEN DATE_SUB(t.txn_time, INTERVAL 1 DAY) AND t.txn_time) as transactions_last_day,
+        (SELECT COALESCE(SUM(amount), 0) FROM transactions t2 WHERE t2.user_id = t.user_id AND t2.txn_time BETWEEN DATE_SUB(t.txn_time, INTERVAL 1 DAY) AND t.txn_time) as amount_last_day,
         AVG(t.amount) OVER (
             PARTITION BY t.user_id 
             ORDER BY t.txn_time 

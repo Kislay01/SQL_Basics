@@ -8,7 +8,7 @@ DELIMITER //
 -- 1. Stored Procedure for Customer Segmentation
 CREATE PROCEDURE sp_CustomerSegmentation(
     IN p_analysis_date DATE,
-    IN p_lookback_months INT DEFAULT 12
+    IN p_lookback_months INT
 )
 BEGIN
     DECLARE done INT DEFAULT FALSE;
@@ -22,6 +22,9 @@ BEGIN
                          WHERE full_date >= DATE_SUB(p_analysis_date, INTERVAL p_lookback_months MONTH));
     
     DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+    
+    -- Set default value if not provided
+    SET p_lookback_months = IFNULL(p_lookback_months, 12);
     
     -- Create temporary table for results
     DROP TEMPORARY TABLE IF EXISTS temp_customer_segments;
@@ -148,25 +151,24 @@ BEGIN
     SET @pivot_sql = '';
     
     -- Build dynamic pivot columns
-    CASE p_pivot_column
-        WHEN 'category' THEN 
-            SELECT GROUP_CONCAT(DISTINCT
-                CONCAT('SUM(CASE WHEN p.category = ''', category, ''' THEN f.', p_metric, ' END) AS `', category, '`')
-            ) INTO @pivot_sql
-            FROM dim_products;
-            
-        WHEN 'customer_segment' THEN 
-            SELECT GROUP_CONCAT(DISTINCT
-                CONCAT('SUM(CASE WHEN c.customer_segment = ''', customer_segment, ''' THEN f.', p_metric, ' END) AS `', customer_segment, '`')
-            ) INTO @pivot_sql
-            FROM dim_customers;
-            
-        WHEN 'region' THEN 
-            SELECT GROUP_CONCAT(DISTINCT
-                CONCAT('SUM(CASE WHEN s.region = ''', region, ''' THEN f.', p_metric, ' END) AS `', region, '`')
-            ) INTO @pivot_sql
-            FROM dim_stores;
-    END CASE;
+    IF p_pivot_column = 'category' THEN 
+        SELECT GROUP_CONCAT(DISTINCT
+            CONCAT('SUM(CASE WHEN p.category = ''', category, ''' THEN f.', p_metric, ' END) AS `', category, '`')
+        ) INTO @pivot_sql
+        FROM dim_products;
+        
+    ELSEIF p_pivot_column = 'customer_segment' THEN 
+        SELECT GROUP_CONCAT(DISTINCT
+            CONCAT('SUM(CASE WHEN c.customer_segment = ''', customer_segment, ''' THEN f.', p_metric, ' END) AS `', customer_segment, '`')
+        ) INTO @pivot_sql
+        FROM dim_customers;
+        
+    ELSEIF p_pivot_column = 'region' THEN 
+        SELECT GROUP_CONCAT(DISTINCT
+            CONCAT('SUM(CASE WHEN s.region = ''', region, ''' THEN f.', p_metric, ' END) AS `', region, '`')
+        ) INTO @pivot_sql
+        FROM dim_stores;
+    END IF;
     
     -- Construct the full query
     SET @sql = CONCAT(
@@ -177,14 +179,13 @@ BEGIN
         'JOIN dim_date d ON f.date_id = d.date_id '
     );
     
-    CASE p_pivot_column
-        WHEN 'category' THEN 
-            SET @sql = CONCAT(@sql, 'JOIN dim_products p ON f.product_id = p.product_id ');
-        WHEN 'customer_segment' THEN 
-            SET @sql = CONCAT(@sql, 'JOIN dim_customers c ON f.customer_id = c.customer_id ');
-        WHEN 'region' THEN 
-            SET @sql = CONCAT(@sql, 'JOIN dim_stores s ON f.store_id = s.store_id ');
-    END CASE;
+    IF p_pivot_column = 'category' THEN 
+        SET @sql = CONCAT(@sql, 'JOIN dim_products p ON f.product_id = p.product_id ');
+    ELSEIF p_pivot_column = 'customer_segment' THEN 
+        SET @sql = CONCAT(@sql, 'JOIN dim_customers c ON f.customer_id = c.customer_id ');
+    ELSEIF p_pivot_column = 'region' THEN 
+        SET @sql = CONCAT(@sql, 'JOIN dim_stores s ON f.store_id = s.store_id ');
+    END IF;
     
     SET @sql = CONCAT(@sql, 'WHERE d.year = ', p_year, ' GROUP BY d.month, d.month_name ORDER BY d.month');
     
@@ -348,7 +349,7 @@ END//
 -- 6. Function for Customer Lifetime Value Calculation
 CREATE FUNCTION fn_CalculateCustomerLTV(
     p_customer_id INT,
-    p_prediction_months INT DEFAULT 12
+    p_prediction_months INT
 ) RETURNS DECIMAL(10,2)
 READS SQL DATA
 DETERMINISTIC
@@ -357,6 +358,9 @@ BEGIN
     DECLARE v_purchase_frequency DECIMAL(5,2);
     DECLARE v_retention_rate DECIMAL(5,4);
     DECLARE v_ltv DECIMAL(10,2);
+    
+    -- Set default value if not provided
+    SET p_prediction_months = IFNULL(p_prediction_months, 12);
     
     -- Calculate average monthly revenue per customer
     SELECT 
